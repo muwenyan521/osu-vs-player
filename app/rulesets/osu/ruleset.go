@@ -85,8 +85,20 @@ type difficultyPlayer struct {
 	lzLegacySound    bool
 }
 
+type ReplayErrorFix struct {
+	ReplayIndex    int  `json:"ReplayIndex"`
+	ObjectIndex    int  `json:"ObjectIndex"`
+	Result         int  `json:"Result"`
+	IsBreak        bool `json:"IsBreak"`
+	MaxComboOffset int  `json:"MaxComboOffset"`
+	NowComboOffset int  `json:"NowComboOffset"`
+}
+
 type subSet struct {
 	player *difficultyPlayer
+
+	comboOffsetCurrent int64
+	comboOffsetMax     int64
 
 	score          *Score
 	hp             IHealthProcessor
@@ -127,6 +139,7 @@ type OsuRuleSet struct {
 	endListener   endListener
 	failListener  failListener
 	clickListener clickListener
+	errorFixes    map[*graphics.Cursor]map[int]ReplayErrorFix
 }
 
 func NewOsuRuleset(beatMap *beatmap.BeatMap, cursors []*graphics.Cursor, diffs []*difficulty.Difficulty) *OsuRuleSet {
@@ -494,8 +507,45 @@ func (set *OsuRuleSet) UpdatePostFor(cursor *graphics.Cursor, time int64, proces
 	}
 }
 
+func applyReplayErrorFix(fix ReplayErrorFix, result *JudgementResult) bool {
+	var fixedResult HitResult
+	switch fix.Result {
+	case 0:
+		fixedResult = Hit300
+	case 1:
+		fixedResult = Hit100
+	case 2:
+		fixedResult = Hit50
+	case 3:
+		fixedResult = Miss
+	default:
+		return false
+	}
+
+	result.HitResult = fixedResult
+	if fix.IsBreak {
+		result.ComboResult = Reset
+	} else {
+		result.ComboResult = Increase
+	}
+	return true
+}
+
 func (set *OsuRuleSet) SendResult(cursor *graphics.Cursor, judgementResult JudgementResult) {
 	subSet := set.cursors[cursor]
+
+	var appliedFix *ReplayErrorFix
+	fixableResult := judgementResult.HitResult&(BaseHitsM|PositionalMiss) > 0
+	if fixes := set.errorFixes[cursor]; fixableResult && fixes != nil {
+		if fix, ok := fixes[int(judgementResult.Number)+1]; ok {
+			if applyReplayErrorFix(fix, &judgementResult) {
+				appliedFix = &fix
+				delete(fixes, int(judgementResult.Number)+1)
+			} else {
+				log.Printf("Ignoring invalid replay error fix result %d for replay %d object %d", fix.Result, fix.ReplayIndex, fix.ObjectIndex)
+			}
+		}
+	}
 
 	if judgementResult.HitResult == Ignore || judgementResult.HitResult == PositionalMiss {
 		if judgementResult.HitResult == PositionalMiss && set.hitListener != nil && !subSet.player.diff.Mods.Active(difficulty.Relax) {
@@ -540,9 +590,16 @@ func (set *OsuRuleSet) SendResult(cursor *graphics.Cursor, judgementResult Judge
 	subSet.scoreProcessor.AddResult(judgementResult)
 	subSet.score.AddResult(judgementResult)
 
+	if appliedFix != nil {
+		subSet.comboOffsetCurrent += int64(appliedFix.NowComboOffset)
+		subSet.comboOffsetMax += int64(appliedFix.MaxComboOffset)
+		subSet.score.Combo = uint(max(0, int64(subSet.score.Combo)+int64(appliedFix.MaxComboOffset)))
+	}
+
 	subSet.score.Score = subSet.scoreProcessor.GetScore()
-	subSet.score.CurrentCombo = uint(subSet.scoreProcessor.GetCombo())
-	subSet.score.Combo = max(subSet.score.CurrentCombo, subSet.score.Combo)
+	subSet.score.CurrentCombo = uint(max(0, subSet.scoreProcessor.GetCombo()+subSet.comboOffsetCurrent))
+	adjustedMaxCombo := uint(max(0, subSet.scoreProcessor.GetCombo()+subSet.comboOffsetMax))
+	subSet.score.Combo = max(adjustedMaxCombo, subSet.score.Combo)
 	subSet.score.Accuracy = subSet.scoreProcessor.GetAccuracy()
 
 	subSet.score.CalculateGrade(subSet.player.diff.Mods)
@@ -798,6 +855,10 @@ func (set *OsuRuleSet) PlayerStopped(cursor *graphics.Cursor, time int64) {
 	subSet := set.cursors[cursor]
 
 	subSet.replayEnded = true
+}
+
+func (set *OsuRuleSet) SetReplayErrorFixes(fixes map[*graphics.Cursor]map[int]ReplayErrorFix) {
+	set.errorFixes = fixes
 }
 
 func (set *OsuRuleSet) SetListener(listener hitListener) {

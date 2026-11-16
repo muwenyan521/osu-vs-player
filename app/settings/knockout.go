@@ -23,6 +23,9 @@ func initKnockout() *knockout {
 		ShowPPAndURRank:     false,
 		Rank1Highlight:      false,
 		PlayerColors:        "",
+		ReplayDebug:         false,
+		EnableErrorFix:      false,
+		ErrorFixFile:        "error.err",
 	}
 }
 
@@ -83,6 +86,15 @@ type knockout struct {
 
 	// Optional per-player cursor colors as Name:R,G,B entries separated by |.
 	PlayerColors string `label:"Player cursor colors" tooltip:"Format: PlayerName:255,0,0|OtherName:0,128,255" showif:"Mode=3"`
+
+	// Compare simulated judgements with the totals stored in each replay.
+	ReplayDebug bool `label:"Compare replay results with stored score" showif:"Mode=3"`
+
+	// Enable per-replay manual judgement corrections.
+	EnableErrorFix bool `label:"Enable replay judgement corrections" showif:"Mode=3"`
+
+	// JSON file containing per-replay judgement corrections.
+	ErrorFixFile string `label:"Replay judgement corrections JSON" tooltip:"Format matches the former VS-player error file" showif:"Mode=3"`
 }
 
 type KnockoutMode int

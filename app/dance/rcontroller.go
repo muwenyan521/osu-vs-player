@@ -1,6 +1,7 @@
 package dance
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -31,16 +32,22 @@ import (
 const replaysMaster = "replays"
 
 type RpData struct {
-	RawName   string
-	Name      string
-	Mods      string
-	ModsV     difficulty.Modifier
-	Accuracy  float64
-	Combo     int64
-	MaxCombo  int64
-	Grade     osu.Grade
-	scoreID   int64
-	ScoreTime time.Time
+	RawName          string
+	Name             string
+	Mods             string
+	ModsV            difficulty.Modifier
+	Accuracy         float64
+	Combo            int64
+	MaxCombo         int64
+	Grade            osu.Grade
+	Expected300      uint
+	Expected100      uint
+	Expected50       uint
+	ExpectedMiss     uint
+	ExpectedMaxCombo int64
+	HasExpected      bool
+	scoreID          int64
+	ScoreTime        time.Time
 }
 
 type subControl struct {
@@ -55,7 +62,8 @@ type subControl struct {
 	mouseController schedulers.Scheduler
 	diff            *difficulty.Difficulty
 
-	modifiedMods bool
+	modifiedMods  bool
+	debugReported bool
 }
 
 func NewSubControl() *subControl {
@@ -159,7 +167,22 @@ func (controller *ReplayController) SetBeatMap(beatMap *beatmap.BeatMap) {
 		control.newHandling = replay.OsuVersion >= 20190506 // This was when slider scoring was changed, so *I think* replay handling as well: https://osu.ppy.sh/home/changelog/cuttingedge/20190506
 		control.oldSpinners = replay.OsuVersion < 20190510  // This was when spinner scoring was changed: https://osu.ppy.sh/home/changelog/cuttingedge/20190510.2
 
-		controller.replays = append(controller.replays, RpData{replay.Username, replay.Username + string(rune(unicode.MaxRune-i)), (control.diff.Mods & displayedMods).String(), control.diff.Mods, 1, 0, int64(mxCombo), osu.NONE, replay.ScoreID, replay.Timestamp})
+		controller.replays = append(controller.replays, RpData{
+			RawName:          replay.Username,
+			Name:             replay.Username + string(rune(unicode.MaxRune-i)),
+			Mods:             (control.diff.Mods & displayedMods).String(),
+			ModsV:            control.diff.Mods,
+			MaxCombo:         int64(mxCombo),
+			Grade:            osu.NONE,
+			Expected300:      uint(replay.Count300),
+			Expected100:      uint(replay.Count100),
+			Expected50:       uint(replay.Count50),
+			ExpectedMiss:     uint(replay.CountMiss),
+			ExpectedMaxCombo: int64(replay.MaxCombo),
+			HasExpected:      true,
+			scoreID:          replay.ScoreID,
+			ScoreTime:        replay.Timestamp,
+		})
 		controller.controllers = append(controller.controllers, control)
 
 		log.Println("\tExpected score:", replay.Score)
@@ -173,7 +196,16 @@ func (controller *ReplayController) SetBeatMap(beatMap *beatmap.BeatMap) {
 		control.danceController = NewGenericController()
 		control.danceController.SetBeatMap(beatMap)
 
-		controller.replays = append([]RpData{{settings.Knockout.DanserName, settings.Knockout.DanserName, control.diff.GetModString(), control.diff.Mods, 1, 0, 0, osu.NONE, -1, time.Now()}}, controller.replays...)
+		controller.replays = append([]RpData{{
+			RawName:   settings.Knockout.DanserName,
+			Name:      settings.Knockout.DanserName,
+			Mods:      control.diff.GetModString(),
+			ModsV:     control.diff.Mods,
+			Accuracy:  1,
+			Grade:     osu.NONE,
+			scoreID:   -1,
+			ScoreTime: time.Now(),
+		}}, controller.replays...)
 		controller.controllers = append([]*subControl{control}, controller.controllers...)
 
 		if len(candidates) == 0 {
@@ -405,6 +437,27 @@ func (controller *ReplayController) InitCursors() {
 	}
 
 	controller.ruleset = osu.NewOsuRuleset(controller.bMap, controller.cursors, diffs)
+	if settings.Knockout.EnableErrorFix && settings.Knockout.ErrorFixFile != "" {
+		fixes, err := loadReplayErrorFixes(settings.Knockout.ErrorFixFile)
+		if err != nil {
+			panic(fmt.Errorf("load replay judgement corrections: %w", err))
+		}
+		byCursor := make(map[*graphics.Cursor]map[int]osu.ReplayErrorFix)
+		for _, fix := range fixes {
+			replayIndex := fix.ReplayIndex - 1
+			if replayIndex >= len(controller.cursors) {
+				log.Printf("Ignoring replay error fix for unavailable replay index %d", fix.ReplayIndex)
+				continue
+			}
+			cursor := controller.cursors[replayIndex]
+			if byCursor[cursor] == nil {
+				byCursor[cursor] = make(map[int]osu.ReplayErrorFix)
+			}
+			byCursor[cursor][fix.ObjectIndex] = fix
+		}
+		controller.ruleset.SetReplayErrorFixes(byCursor)
+		log.Printf("Loaded %d replay judgement corrections", len(fixes))
+	}
 
 	for i, c := range controller.controllers {
 		if controller.replays[i].ModsV.Active(difficulty.Relax) {
@@ -419,6 +472,26 @@ func (controller *ReplayController) InitCursors() {
 	}
 }
 
+func loadReplayErrorFixes(filename string) ([]osu.ReplayErrorFix, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var fixes []osu.ReplayErrorFix
+	if err := json.Unmarshal(data, &fixes); err != nil {
+		return nil, err
+	}
+
+	for i, fix := range fixes {
+		if fix.ReplayIndex < 1 || fix.ObjectIndex < 1 || fix.Result < 0 || fix.Result > 3 {
+			return nil, fmt.Errorf("invalid correction at entry %d", i+1)
+		}
+	}
+
+	return fixes, nil
+}
+
 func (controller *ReplayController) Update(time float64, delta float64) {
 	numSkipped := int(time) - int(controller.lastTime) - 1
 
@@ -430,6 +503,10 @@ func (controller *ReplayController) Update(time float64, delta float64) {
 
 	controller.updateMain(time)
 
+	if settings.Knockout.ReplayDebug {
+		controller.reportReplayResults(time)
+	}
+
 	for i := range controller.controllers {
 		if controller.controllers[i].danceController == nil {
 			controller.cursors[i].Update(delta)
@@ -439,6 +516,32 @@ func (controller *ReplayController) Update(time float64, delta float64) {
 		controller.replays[i].Accuracy = sc.Accuracy
 		controller.replays[i].Combo = int64(sc.Combo)
 		controller.replays[i].Grade = sc.Grade
+	}
+}
+
+func replayStatsMatch(replay RpData, score osu.Score) bool {
+	return replay.Expected300 == score.Count300 &&
+		replay.Expected100 == score.Count100 &&
+		replay.Expected50 == score.Count50 &&
+		replay.ExpectedMiss == score.CountMiss &&
+		replay.ExpectedMaxCombo == int64(score.Combo)
+}
+
+func (controller *ReplayController) reportReplayResults(time float64) {
+	for i, replay := range controller.replays {
+		control := controller.controllers[i]
+		if !replay.HasExpected || control.danceController != nil || control.debugReported || control.replayIndex < len(control.frames) || time < control.replayTime+1000 {
+			continue
+		}
+
+		actual := controller.ruleset.GetScore(controller.cursors[i])
+		matches := replayStatsMatch(replay, actual)
+		status := "MISMATCH"
+		if matches {
+			status = "MATCH"
+		}
+		log.Printf("ReplayDebug %s: %s (stored 300/100/50/miss=%d/%d/%d/%d combo=%d; simulated=%d/%d/%d/%d combo=%d)", status, replay.RawName, replay.Expected300, replay.Expected100, replay.Expected50, replay.ExpectedMiss, replay.ExpectedMaxCombo, actual.Count300, actual.Count100, actual.Count50, actual.CountMiss, actual.Combo)
+		control.debugReported = true
 	}
 }
 
