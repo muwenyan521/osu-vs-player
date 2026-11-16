@@ -264,7 +264,7 @@ func closeHandler(err any, stackTrace []string) {
 			log.Println(s)
 		}
 
-		showMessage(mError, "Launcher crashed with message:\n %s", err)
+		showMessage(mError, fmt.Sprintf("Launcher crashed with message:\n %s", err))
 
 		os.Exit(1)
 	}
@@ -287,7 +287,7 @@ func (l *launcher) startContext() {
 
 	c, err := l.loadConfig(l.bld.config)
 	if err != nil {
-		showMessage(mError, "Failed to read \"%s\" profile.\nReverting to \"default\".\nError: %s", l.bld.config, err)
+		showMessage(mError, fmt.Sprintf("Failed to read \"%s\" profile.\nReverting to \"default\".\nError: %s", l.bld.config, err))
 
 		l.bld.config = "default"
 		*launcherConfig.Profile = l.bld.config
@@ -415,7 +415,7 @@ func (l *launcher) startContext() {
 
 		refreshErr := osuapi.TryRefreshToken()
 		if refreshErr != nil {
-			showMessage(mError, "Failed to refresh token!\nPlease go to Settings->Credentials and click Authorize.\nError: %s", refreshErr.Error())
+			showMessage(mError, fmt.Sprintf("Failed to refresh token!\nPlease go to Settings->Credentials and click Authorize.\nError: %s", refreshErr.Error()))
 		}
 	})
 
@@ -436,7 +436,7 @@ func (l *launcher) loadBeatmaps() {
 
 	err := database.Init()
 	if err != nil {
-		showMessage(mError, "Failed to initialize database! Error: %s\nMake sure Song's folder does exist or change it to the correct directory in settings.", err)
+		showMessage(mError, fmt.Sprintf("Failed to initialize database! Error: %s\nMake sure Song's folder does exist or change it to the correct directory in settings.", err))
 		l.beatmaps = make([]*beatmap.BeatMap, 0)
 	} else {
 		bSplash := "Loading maps...\nThis may take a while...\n\n"
@@ -960,7 +960,7 @@ func (l *launcher) trySelectReplaysFromPaths(p []string) {
 	}
 
 	if errorCollection != "" {
-		showMessage(mError, "There were errors opening replays:\n%s", errorCollection)
+		showMessage(mError, fmt.Sprintf("There were errors opening replays:\n%s", errorCollection))
 	}
 
 	if replays != nil && len(replays) > 0 {
@@ -1442,7 +1442,7 @@ func (l *launcher) drawConfigPanel() {
 
 							if s != "default" {
 								if imgui.SelectableBool("Remove") {
-									if showMessage(mQuestion, "Are you sure you want to remove \"%s\" profile?", s) {
+									if showMessage(mQuestion, fmt.Sprintf("Are you sure you want to remove \"%s\" profile?", s)) {
 										l.removeConfig(s)
 									}
 								}
@@ -1672,7 +1672,7 @@ func (l *launcher) setConfig(s string) {
 	eConfig, err := l.loadConfig(s)
 
 	if err != nil {
-		showMessage(mError, "Failed to read \"%s\" profile. Error: %s", s, err)
+		showMessage(mError, fmt.Sprintf("Failed to read \"%s\" profile. Error: %s", s, err))
 	} else {
 		if !compareDirs(eConfig.General.OsuSongsDir, settings.General.OsuSongsDir) {
 			showMessage(mInfo, "This config has different osu! Songs directory.\nRestart the launcher to see updated maps")
@@ -1718,7 +1718,7 @@ func (l *launcher) startDanser() {
 
 	err = l.danserCmd.Start()
 	if err != nil {
-		showMessage(mError, "danser failed to start! %s", err.Error())
+		showMessage(mError, fmt.Sprintf("danser failed to start! %s", err.Error()))
 		return
 	}
 
@@ -1845,7 +1845,7 @@ func (l *launcher) startDanser() {
 				gcontext.Restore()
 				gcontext.Focus()
 
-				showMessage(mError, "danser crashed! %s\n\n%s", err.Error(), pMsg)
+				showMessage(mError, fmt.Sprintf("danser crashed! %s\n\n%s", err.Error(), pMsg))
 			})
 		} else if launcherConfig.CurrentPMode != Watch && launcherConfig.CurrentMode != Play {
 			if launcherConfig.ShowFileAfter && resultFile != "" {
@@ -1899,7 +1899,7 @@ func (l *launcher) loadOSZs(names []string) {
 
 			err := files.MoveFile(name, filepath.Join(settings.General.GetSongsDir(), fileName))
 			if err != nil {
-				showMessage(mError, "Failed to move \"%s\" to Songs folder: %s", name, err)
+				showMessage(mError, fmt.Sprintf("Failed to move \"%s\" to Songs folder: %s", name, err))
 			} else {
 				reload = true
 			}
