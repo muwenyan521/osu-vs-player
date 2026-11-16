@@ -19,6 +19,9 @@ func initKnockout() *knockout {
 		MaxCursorSize:       7.0,
 		AddDanser:           false,
 		DanserName:          "danser",
+		ShowRealtimeUR:      true,
+		ShowPPAndURRank:     false,
+		Rank1Highlight:      false,
 	}
 }
 
@@ -67,6 +70,15 @@ type knockout struct {
 	// Self explanatory
 	AddDanser  bool   `liveedit:"false"`
 	DanserName string `label:"Danser's name" tooltip:"It's also used in danser replay mode" liveedit:"false"`
+
+	// Display each replay's unstable rate in VS mode.
+	ShowRealtimeUR bool `label:"Show per-player unstable rate"`
+
+	// Show each player's current PP and UR rank in VS mode.
+	ShowPPAndURRank bool `label:"Show PP and UR ranks" showif:"Mode=3"`
+
+	// Highlight first-place ranks in the VS overlay.
+	Rank1Highlight bool `label:"Highlight first place" showif:"Mode=3"`
 }
 
 type KnockoutMode int
