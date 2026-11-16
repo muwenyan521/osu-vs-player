@@ -22,6 +22,7 @@ func initKnockout() *knockout {
 		ShowRealtimeUR:      true,
 		ShowPPAndURRank:     false,
 		Rank1Highlight:      false,
+		PlayerColors:        "",
 	}
 }
 
@@ -79,6 +80,9 @@ type knockout struct {
 
 	// Highlight first-place ranks in the VS overlay.
 	Rank1Highlight bool `label:"Highlight first place" showif:"Mode=3"`
+
+	// Optional per-player cursor colors as Name:R,G,B entries separated by |.
+	PlayerColors string `label:"Player cursor colors" tooltip:"Format: PlayerName:255,0,0|OtherName:0,128,255" showif:"Mode=3"`
 }
 
 type KnockoutMode int

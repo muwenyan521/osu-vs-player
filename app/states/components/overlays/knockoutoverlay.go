@@ -281,6 +281,57 @@ func NewKnockoutOverlay(replayController *dance.ReplayController) *KnockoutOverl
 	return overlay
 }
 
+func parseKnockoutPlayerColors(spec string) map[string]color2.Color {
+	parsed := make(map[string]color2.Color)
+	for _, entry := range strings.Split(spec, "|") {
+		name, rawRGB, ok := strings.Cut(strings.TrimSpace(entry), ":")
+		if !ok || name == "" {
+			continue
+		}
+
+		channels := strings.Split(rawRGB, ",")
+		if len(channels) != 3 {
+			continue
+		}
+
+		var rgb [3]float32
+		valid := true
+		for i, channel := range channels {
+			value, err := strconv.Atoi(strings.TrimSpace(channel))
+			if err != nil || value < 0 || value > 255 {
+				valid = false
+				break
+			}
+			rgb[i] = float32(value) / 255
+		}
+		if valid {
+			parsed[name] = color2.NewRGBA(rgb[0], rgb[1], rgb[2], 1)
+		}
+	}
+	return parsed
+}
+
+func (overlay *KnockoutOverlay) ApplyCursorColors(colors []color2.Color) {
+	if settings.Knockout.Mode != settings.OneVsOne || settings.Knockout.PlayerColors == "" {
+		return
+	}
+
+	custom := parseKnockoutPlayerColors(settings.Knockout.PlayerColors)
+	replays := overlay.controller.GetReplays()
+	for playerIndex, replay := range replays {
+		color, exists := custom[replay.Name]
+		if !exists {
+			continue
+		}
+		for divide := 0; divide < settings.DIVIDES; divide++ {
+			index := divide*len(replays) + playerIndex
+			if index < len(colors) {
+				colors[index] = color
+			}
+		}
+	}
+}
+
 func updatePlayerUR(player *knockoutPlayer, hitError, speed float64) {
 	if speed <= 0 {
 		return

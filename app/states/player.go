@@ -862,6 +862,9 @@ func (player *Player) DrawMain(float64) {
 	}
 
 	cursorColors := settings.Cursor.GetColors(settings.DIVIDES, len(player.controller.GetCursors()), player.Scl, player.cursorGlider.GetValue())
+	if knockoutOverlay, ok := player.overlay.(*overlays.KnockoutOverlay); ok {
+		knockoutOverlay.ApplyCursorColors(cursorColors)
+	}
 
 	if player.overlay != nil {
 		player.drawOverlayPart(player.overlay.DrawBackground, cursorColors, cursorCameras[0], 1)
