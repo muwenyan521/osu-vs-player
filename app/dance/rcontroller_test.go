@@ -1,12 +1,46 @@
 package dance
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/wieku/rplpa"
+
 	"github.com/wieku/danser-go/app/rulesets/osu"
 )
+
+func TestReplayPerfScoreStableCounts(t *testing.T) {
+	score := replayPerfScore(&rplpa.Replay{
+		Score: 1234, MaxCombo: 9,
+		Count300: 8, Count100: 2, Count50: 1, CountMiss: 1,
+	})
+
+	if score.Score != 1234 || score.MaxCombo != 9 || score.CountGreat != 8 || score.CountOk != 2 || score.CountMeh != 1 || score.CountMiss != 1 {
+		t.Fatalf("unexpected replay score stats: %+v", score)
+	}
+	if math.Abs(score.Accuracy-(2650.0/3600)) > 1e-9 {
+		t.Fatalf("accuracy = %v, want %v", score.Accuracy, 2650.0/3600)
+	}
+}
+
+func TestReplayPerfScoreLazerStatistics(t *testing.T) {
+	score := replayPerfScore(&rplpa.Replay{
+		ScoreInfo: &rplpa.ScoreInfo{Statistics: map[rplpa.LazerHitResult]int64{
+			rplpa.LazerGreat: 5, rplpa.LazerPerfect: 2,
+			rplpa.LazerGood: 3, rplpa.LazerOk: 1,
+			rplpa.LazerMeh: 4, rplpa.LazerMiss: 6,
+		}},
+	})
+
+	if score.CountGreat != 7 || score.CountOk != 4 || score.CountMeh != 4 || score.CountMiss != 6 {
+		t.Fatalf("unexpected lazer replay stats: %+v", score)
+	}
+	if math.Abs(score.Accuracy-(2700.0/6300)) > 1e-9 {
+		t.Fatalf("accuracy = %v, want %v", score.Accuracy, 2700.0/6300)
+	}
+}
 
 func TestLoadReplayErrorFixes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "fixes.json")

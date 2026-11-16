@@ -4,7 +4,7 @@ var Knockout = initKnockout()
 
 func initKnockout() *knockout {
 	return &knockout{
-		Mode:                ComboBreak,
+		Mode:                MaxCombo,
 		SmokeEnabled:        false,
 		GraceEndTime:        -10,
 		BubbleMinimumCombo:  200,
@@ -31,9 +31,9 @@ func initKnockout() *knockout {
 
 type knockout struct {
 	// Knockout mode. More info below
-	Mode KnockoutMode `combo:"0|Combo Break,1|Max Combo,2|Replay Showcase,3|Vs Mode,4|SS or Quit" liveedit:"false"`
+	Mode KnockoutMode `combo:"0|Max Combo (with grace),1|Max Combo,2|Replay Showcase,3|Vs Mode,4|SS or Quit" liveedit:"false"`
 
-	// In Mode = ComboBreak it won't knock out the player if they break combo before GraceEndTime (in seconds)
+	// In mode 0, delay max-combo knockouts until this time (seconds).
 	GraceEndTime float64 `string:"true" min:"-10" max:"1000000" showif:"Mode=0"`
 
 	// In Mode = XReplays it will show combo break bubble if combo was bigger than BubbleMinimumCombo
@@ -100,10 +100,10 @@ type knockout struct {
 type KnockoutMode int
 
 const (
-	// Players get knocked out when they lose a combo to a miss or slider break
+	// Max-combo knockout with the GraceEndTime delay.
 	ComboBreak = KnockoutMode(iota)
 
-	// ComboBreak but only when they reached their max combo on the map
+	// Max-combo knockout without a grace delay.
 	MaxCombo
 
 	// Players won't get knocked out

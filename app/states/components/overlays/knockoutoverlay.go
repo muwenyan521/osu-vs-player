@@ -332,6 +332,53 @@ func (overlay *KnockoutOverlay) ApplyCursorColors(colors []color2.Color) {
 	}
 }
 
+func replayLeaderProtected(candidate dance.RpData, replays []dance.RpData) bool {
+	if !candidate.HasExpected {
+		return false
+	}
+
+	var highestScore int64
+	highestPP := 0.0
+	var highestMaxCombo int64
+	var fewestMisses uint
+	hasReplay := false
+	hasPerfectReplay := false
+
+	for _, replay := range replays {
+		if !replay.HasExpected {
+			continue
+		}
+		hasReplay = true
+		highestScore = max(highestScore, replay.ExpectedScore)
+		highestPP = max(highestPP, replay.ExpectedPP)
+		highestMaxCombo = max(highestMaxCombo, replay.ExpectedMaxCombo)
+		if replay.ExpectedMiss == 0 {
+			hasPerfectReplay = true
+		}
+		if fewestMisses == 0 || replay.ExpectedMiss < fewestMisses {
+			fewestMisses = replay.ExpectedMiss
+		}
+	}
+
+	if !hasReplay {
+		return false
+	}
+	if highestScore > 0 && candidate.ExpectedScore == highestScore {
+		return true
+	}
+	if highestPP > 0 && math.Abs(candidate.ExpectedPP-highestPP) < 1e-6 {
+		return true
+	}
+	if highestMaxCombo > 0 && candidate.ExpectedMaxCombo == highestMaxCombo {
+		return true
+	}
+	return !hasPerfectReplay && fewestMisses > 0 && candidate.ExpectedMiss == fewestMisses
+}
+
+func brokeRecordedMaxCombo(currentCombo, recordedMaxCombo int64) bool {
+	return recordedMaxCombo > 0 && currentCombo >= recordedMaxCombo
+}
+
 func updatePlayerUR(player *knockoutPlayer, hitError, speed float64) {
 	if speed <= 0 {
 		return
@@ -399,31 +446,42 @@ func (overlay *KnockoutOverlay) hitReceived(cursor *graphics.Cursor, judgementRe
 	}
 
 	comboBreak := judgementResult.ComboResult == osu.Reset
-	if (settings.Knockout.Mode == settings.SSOrQuit && (acceptableHits || comboBreak)) || (comboBreak && judgementResult.Number != 0) {
+	maxComboMode := settings.Knockout.Mode == settings.MaxCombo || settings.Knockout.Mode == settings.ComboBreak
+	if maxComboMode && comboBreak && !player.hasBroken {
+		replay := overlay.controller.GetReplays()[player.oldIndex]
+		atRecordedMaxCombo := brokeRecordedMaxCombo(player.sCombo, player.maxCombo)
+		graceElapsed := settings.Knockout.Mode == settings.MaxCombo || judgementResult.Time > int64(settings.Knockout.GraceEndTime*1000)
+		protected := replayLeaderProtected(replay, overlay.controller.GetReplays())
+
+		if atRecordedMaxCombo && graceElapsed && !protected && judgementResult.Number != 0 && overlay.alivePlayers > settings.Knockout.MinPlayers {
+			player.hasBroken = true
+			player.breakTime = judgementResult.Time
+			overlay.alivePlayers--
+			player.fade.AddEvent(overlay.normalTime, overlay.normalTime+3000, 0)
+			player.height.SetEasing(easing.OutQuad)
+			player.height.AddEvent(overlay.normalTime+2500, overlay.normalTime+3000, 0)
+			overlay.deathBubbles = append(overlay.deathBubbles, newBubble(judgementResult.Position, overlay.normalTime, overlay.names[cursor], player.sCombo, resultClean, judgementResult.ComboResult))
+			log.Println(overlay.names[cursor], "has broken recorded max combo:", player.sCombo)
+		} else {
+			// Max-combo mode keeps misses visible even when the player is protected or has not reached their recorded peak.
+			overlay.deathBubbles = append(overlay.deathBubbles, newBubble(judgementResult.Position, overlay.normalTime, overlay.names[cursor], player.sCombo, resultClean, judgementResult.ComboResult))
+		}
+	} else if (settings.Knockout.Mode == settings.SSOrQuit && (acceptableHits || comboBreak)) || (comboBreak && judgementResult.Number != 0 && !maxComboMode) {
 		if !player.hasBroken {
 			if settings.Knockout.Mode == settings.XReplays {
 				if player.sCombo >= int64(settings.Knockout.BubbleMinimumCombo) {
 					overlay.deathBubbles = append(overlay.deathBubbles, newBubble(judgementResult.Position, overlay.normalTime, overlay.names[cursor], player.sCombo, resultClean, judgementResult.ComboResult))
 					log.Println(overlay.names[cursor], "has broken! Combo:", player.sCombo)
 				}
-			} else if (settings.Knockout.Mode == settings.SSOrQuit ||
-				(settings.Knockout.Mode == settings.ComboBreak && judgementResult.Time > int64(settings.Knockout.GraceEndTime*1000)) ||
-				(settings.Knockout.Mode == settings.MaxCombo && math.Abs(float64(player.sCombo-player.maxCombo)) < 5)) &&
-				overlay.alivePlayers > settings.Knockout.MinPlayers {
-				//Fade out player name
+			} else if settings.Knockout.Mode == settings.SSOrQuit && overlay.alivePlayers > settings.Knockout.MinPlayers {
 				player.hasBroken = true
 				player.breakTime = judgementResult.Time
-
 				overlay.alivePlayers--
-
 				player.fade.AddEvent(overlay.normalTime, overlay.normalTime+3000, 0)
-
 				player.height.SetEasing(easing.OutQuad)
 				player.height.AddEvent(overlay.normalTime+2500, overlay.normalTime+3000, 0)
-
 				overlay.deathBubbles = append(overlay.deathBubbles, newBubble(judgementResult.Position, overlay.normalTime, overlay.names[cursor], player.sCombo, resultClean, judgementResult.ComboResult))
-
-				log.Println(overlay.names[cursor], "has broken! Max combo:", player.sCombo)
+				log.Println(overlay.names[cursor], "has broken! Combo:", player.sCombo)
 			}
 		}
 	}

@@ -22,6 +22,8 @@ import (
 	"github.com/wieku/danser-go/app/dance/spinners"
 	"github.com/wieku/danser-go/app/graphics"
 	"github.com/wieku/danser-go/app/rulesets/osu"
+	"github.com/wieku/danser-go/app/rulesets/osu/performance"
+	"github.com/wieku/danser-go/app/rulesets/osu/performance/api"
 	"github.com/wieku/danser-go/app/settings"
 	"github.com/wieku/danser-go/framework/env"
 	"github.com/wieku/danser-go/framework/files"
@@ -40,6 +42,8 @@ type RpData struct {
 	Combo            int64
 	MaxCombo         int64
 	Grade            osu.Grade
+	ExpectedScore    int64
+	ExpectedPP       float64
 	Expected300      uint
 	Expected100      uint
 	Expected50       uint
@@ -78,6 +82,35 @@ type ReplayController struct {
 	controllers []*subControl
 	ruleset     *osu.OsuRuleSet
 	lastTime    float64
+}
+
+func replayPerfScore(replay *rplpa.Replay) api.PerfScore {
+	great, ok, meh, misses := int(replay.Count300), int(replay.Count100), int(replay.Count50), int(replay.CountMiss)
+	if replay.ScoreInfo != nil && len(replay.ScoreInfo.Statistics) > 0 {
+		stats := replay.ScoreInfo.Statistics
+		great = int(stats[rplpa.LazerGreat] + stats[rplpa.LazerPerfect])
+		ok = int(stats[rplpa.LazerGood] + stats[rplpa.LazerOk])
+		meh = int(stats[rplpa.LazerMeh])
+		misses = int(stats[rplpa.LazerMiss])
+	}
+
+	total := great + ok + meh + misses
+	accuracy := 0.0
+	if total > 0 {
+		accuracy = float64(great*300+ok*100+meh*50) / float64(total*300)
+	}
+
+	return api.PerfScore{
+		Score:        int(replay.Score),
+		MaxCombo:     int(replay.MaxCombo),
+		CountGreat:   great,
+		CountOk:      ok,
+		CountMeh:     meh,
+		CountMiss:    misses,
+		SliderEnd:    -1,
+		SliderBreaks: -1,
+		Accuracy:     accuracy,
+	}
 }
 
 func NewReplayController() Controller {
@@ -167,6 +200,10 @@ func (controller *ReplayController) SetBeatMap(beatMap *beatmap.BeatMap) {
 		control.newHandling = replay.OsuVersion >= 20190506 // This was when slider scoring was changed, so *I think* replay handling as well: https://osu.ppy.sh/home/changelog/cuttingedge/20190506
 		control.oldSpinners = replay.OsuVersion < 20190510  // This was when spinner scoring was changed: https://osu.ppy.sh/home/changelog/cuttingedge/20190510.2
 
+		expectedScore := replayPerfScore(replay)
+		expectedAttributes := performance.GetDifficultyCalculator().CalculateSingle(beatMap, control.diff)
+		expectedPP := performance.CreatePPCalculator().Calculate(expectedAttributes, expectedScore, control.diff).Total
+
 		controller.replays = append(controller.replays, RpData{
 			RawName:          replay.Username,
 			Name:             replay.Username + string(rune(unicode.MaxRune-i)),
@@ -174,10 +211,12 @@ func (controller *ReplayController) SetBeatMap(beatMap *beatmap.BeatMap) {
 			ModsV:            control.diff.Mods,
 			MaxCombo:         int64(mxCombo),
 			Grade:            osu.NONE,
-			Expected300:      uint(replay.Count300),
-			Expected100:      uint(replay.Count100),
-			Expected50:       uint(replay.Count50),
-			ExpectedMiss:     uint(replay.CountMiss),
+			ExpectedScore:    int64(replay.Score),
+			ExpectedPP:       expectedPP,
+			Expected300:      uint(expectedScore.CountGreat),
+			Expected100:      uint(expectedScore.CountOk),
+			Expected50:       uint(expectedScore.CountMeh),
+			ExpectedMiss:     uint(expectedScore.CountMiss),
 			ExpectedMaxCombo: int64(replay.MaxCombo),
 			HasExpected:      true,
 			scoreID:          replay.ScoreID,
