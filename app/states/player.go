@@ -415,6 +415,9 @@ func NewPlayer(beatMap *beatmap.BeatMap) *Player {
 
 		s.SetBeatmapEnd(beatmapEnd + fadeOut)
 	}
+	if knockout, ok := player.overlay.(*overlays.KnockoutOverlay); ok {
+		knockout.SetResultsStart(beatmapEnd + fadeOut)
+	}
 
 	if !math.IsInf(settings.END, 1) {
 		for _, o := range beatMap.HitObjects {
@@ -448,6 +451,9 @@ func NewPlayer(beatMap *beatmap.BeatMap) *Player {
 		}
 	} else {
 		player.volumeGlider.AddEvent(beatmapEnd, beatmapEnd+fadeOut, 0.0)
+	}
+	if _, ok := player.overlay.(*overlays.KnockoutOverlay); ok {
+		player.MapEnd += (settings.Gameplay.ResultsScreenTime + 1) * 1000
 	}
 
 	player.MapEnd += 100

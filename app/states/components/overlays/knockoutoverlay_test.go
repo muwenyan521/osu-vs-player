@@ -19,6 +19,22 @@ func TestBrokeRecordedMaxCombo(t *testing.T) {
 	}
 }
 
+func TestBuildFinalStandingsDeduplicatesMultiAwardPlayers(t *testing.T) {
+	replays := []dance.RpData{
+		{RawName: "Alice", Name: "Alice-one", ExpectedScore: 1000, ExpectedPP: 300, ExpectedMaxCombo: 150, ExpectedMiss: 1, HasExpected: true},
+		{RawName: "Bob", Name: "Bob", ExpectedScore: 2000, ExpectedPP: 100, ExpectedMaxCombo: 300, ExpectedMiss: 4, HasExpected: true},
+		{RawName: "ALICE", Name: "Alice-two", ExpectedScore: 900, ExpectedPP: 120, ExpectedMaxCombo: 100, ExpectedMiss: 2, HasExpected: true},
+	}
+
+	standings := buildFinalStandings(replays)
+	if len(standings) != 2 {
+		t.Fatalf("got %d rows, want 2 deduplicated players: %#v", len(standings), standings)
+	}
+	if len(standings[0].awards) != 2 || len(standings[1].awards) != 2 {
+		t.Fatalf("expected two awards per player, got %#v", standings)
+	}
+}
+
 func TestReplayLeaderProtectionUsesFinalReplayStats(t *testing.T) {
 	replays := []dance.RpData{
 		{Name: "score", ExpectedScore: 1000, ExpectedPP: 100, ExpectedMaxCombo: 500, ExpectedMiss: 2, HasExpected: true},
