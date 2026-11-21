@@ -45,7 +45,9 @@ func NewNamedPipe(path, name string) (*NamedPipe, error) {
 	}
 
 	_, err = unix.FcntlInt(file.Fd(), unix.F_SETPIPE_SZ, 65536)
-	if err != nil {
+	// Linux can deny enlargement when the user's pipe-memory quota is reached.
+	// The existing pipe still works; keep its default capacity in that case.
+	if err != nil && err != unix.EPERM {
 		return nil, err
 	}
 

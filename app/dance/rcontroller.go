@@ -43,12 +43,15 @@ type RpData struct {
 	MaxCombo         int64
 	Grade            osu.Grade
 	ExpectedScore    int64
+	LegacyScore      int64
 	ExpectedPP       float64
 	Expected300      uint
 	Expected100      uint
 	Expected50       uint
 	ExpectedMiss     uint
 	ExpectedMaxCombo int64
+	EliminationCombo int64
+	EliminationTime  int64
 	HasExpected      bool
 	scoreID          int64
 	ScoreTime        time.Time
@@ -76,12 +79,13 @@ func NewSubControl() *subControl {
 }
 
 type ReplayController struct {
-	bMap        *beatmap.BeatMap
-	replays     []RpData
-	cursors     []*graphics.Cursor
-	controllers []*subControl
-	ruleset     *osu.OsuRuleSet
-	lastTime    float64
+	preSimulating bool
+	bMap          *beatmap.BeatMap
+	replays       []RpData
+	cursors       []*graphics.Cursor
+	controllers   []*subControl
+	ruleset       *osu.OsuRuleSet
+	lastTime      float64
 }
 
 func replayPerfScore(replay *rplpa.Replay) api.PerfScore {
@@ -158,6 +162,25 @@ func (controller *ReplayController) SetBeatMap(beatMap *beatmap.BeatMap) {
 		}
 	}
 
+	var standardTotals map[string]int64
+	if path := strings.TrimSpace(settings.Knockout.ReplayTotalScoresFile); path != "" {
+		var err error
+		standardTotals, err = loadReplayTotalScores(path)
+		if err != nil {
+			panic(err)
+		}
+		before := len(candidates)
+		candidates, err = bestReplaysPerPlayer(candidates, standardTotals)
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("Replay deduplication: %d -> %d players (highest lazer total_score)", before, len(candidates))
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return standardTotals[replayScoreKey(candidates[i])] > standardTotals[replayScoreKey(candidates[j])]
+		})
+
+	}
+
 	displayedMods := ^difficulty.ParseMods(settings.Knockout.HideMods)
 
 	for i, replay := range candidates {
@@ -204,6 +227,16 @@ func (controller *ReplayController) SetBeatMap(beatMap *beatmap.BeatMap) {
 		expectedAttributes := performance.GetDifficultyCalculator().CalculateSingle(beatMap, control.diff)
 		expectedPP := performance.CreatePPCalculator().Calculate(expectedAttributes, expectedScore, control.diff).Total
 
+		finalScore := int64(replay.Score)
+		if standardTotals != nil {
+			var found bool
+			finalScore, found = standardTotals[replayScoreKey(replay)]
+			if !found {
+				panic(fmt.Sprintf("missing lazer total_score for %s (%s)", replay.Username, replayScoreKey(replay)))
+			}
+			log.Printf("Lazer total_score: %s = %d", replay.Username, finalScore)
+		}
+
 		controller.replays = append(controller.replays, RpData{
 			RawName:          replay.Username,
 			Name:             replay.Username + string(rune(unicode.MaxRune-i)),
@@ -211,7 +244,8 @@ func (controller *ReplayController) SetBeatMap(beatMap *beatmap.BeatMap) {
 			ModsV:            control.diff.Mods,
 			MaxCombo:         int64(mxCombo),
 			Grade:            osu.NONE,
-			ExpectedScore:    int64(replay.Score),
+			ExpectedScore:    finalScore,
+			LegacyScore:      int64(replay.Score),
 			ExpectedPP:       expectedPP,
 			Expected300:      uint(expectedScore.CountGreat),
 			Expected100:      uint(expectedScore.CountOk),
@@ -417,6 +451,20 @@ func loadFrames(subController *subControl, frames []*rplpa.ReplayData) {
 	subController.frames = frames
 }
 
+// Replay input stays in the replay's mod space for judgement. Only its display
+// is reflected into the shared beatmap's coordinate space.
+func replayDisplayFlips(replayDiff, mapDiff *difficulty.Difficulty) (horizontal, vertical bool) {
+	flips := func(diff *difficulty.Difficulty) (bool, bool) {
+		mirror, enabled := difficulty.GetModConfig[difficulty.MirrorSettings](diff)
+		h := enabled && (mirror.FlipMode+1)&1 != 0
+		v := diff.CheckModActive(difficulty.HardRock) != (enabled && (mirror.FlipMode+1)&2 != 0)
+		return h, v
+	}
+	rh, rv := flips(replayDiff)
+	mh, mv := flips(mapDiff)
+	return rh != mh, rv != mv
+}
+
 func (controller *ReplayController) InitCursors() {
 	var diffs []*difficulty.Difficulty
 
@@ -454,23 +502,7 @@ func (controller *ReplayController) InitCursors() {
 			controller.cursors = append(controller.cursors, cursor)
 		}
 
-		rMS, rMOk := difficulty.GetModConfig[difficulty.MirrorSettings](c.diff)
-
-		rvFlip := c.diff.CheckModActive(difficulty.HardRock) != (rMOk && (rMS.FlipMode+1)&2 == 2)
-		rhFlip := rMOk && (rMS.FlipMode+1)&1 == 1
-
-		bMS, bMOk := difficulty.GetModConfig[difficulty.MirrorSettings](controller.bMap.Diff)
-
-		bvFlip := controller.bMap.Diff.CheckModActive(difficulty.HardRock) != (bMOk && (bMS.FlipMode+1)&2 == 2)
-		bhFlip := bMOk && (bMS.FlipMode+1)&1 == 1
-
-		if rvFlip != bvFlip {
-			controller.cursors[i].InvertDisplayV = true
-		}
-
-		if rhFlip != bhFlip {
-			controller.cursors[i].InvertDisplayH = true
-		}
+		controller.cursors[i].InvertDisplayH, controller.cursors[i].InvertDisplayV = replayDisplayFlips(c.diff, controller.bMap.Diff)
 
 		diffs = append(diffs, c.diff)
 	}
@@ -508,6 +540,9 @@ func (controller *ReplayController) InitCursors() {
 
 			controller.controllers[i].mouseController.Init(controller.bMap.GetObjectsCopy(), c.diff, controller.cursors[i], spinners.GetMoverCtorByName("circle"), false)
 		}
+	}
+	if !controller.preSimulating {
+		controller.prepareEliminationPeaks()
 	}
 }
 
@@ -729,7 +764,7 @@ func (controller *ReplayController) processStable(i int, c *subControl, nTime fl
 			//	processAhead = false
 			//}
 
-			processAhead := false // Always false for now. Slider end issues should be fixed, but leaving the logic just in case
+			processAhead := c.replayIndex+1 >= len(c.frames) || c.frames[c.replayIndex+1].Time != 1
 
 			if !isAutopilot {
 				controller.cursors[i].SetPos(vector.NewVec2d(frame.MouseX, frame.MouseY).Copy32())
@@ -753,6 +788,12 @@ func (controller *ReplayController) processStable(i int, c *subControl, nTime fl
 			}
 
 			controller.cursors[i].SmokeKey = frame.KeyPressed.Smoke
+
+			// A zero-delta input frame can follow an object-ending frame in the same
+			// millisecond. Finish that object before applying the new click.
+			if frame.Time == 0 {
+				controller.ruleset.UpdatePostFor(controller.cursors[i], replayTime, false)
+			}
 
 			controller.ruleset.UpdateClickFor(controller.cursors[i], replayTime)
 			controller.ruleset.UpdateNormalFor(controller.cursors[i], replayTime, processAhead)

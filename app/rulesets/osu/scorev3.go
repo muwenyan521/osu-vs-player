@@ -150,3 +150,41 @@ func (s *scoreV3Processor) GetCombo() int64 {
 func (s *scoreV3Processor) GetAccuracy() float64 {
 	return s.accuracy
 }
+
+// initStable uses the stable judgement stream and its original combo semantics,
+// but accumulates the same accuracy/combo/bonus standard-score components as V3.
+// It does not change hit windows, note lock, HP, PP, or the original score.
+func (s *scoreV3Processor) initStable(beatMap *beatmap.BeatMap, player *difficultyPlayer) {
+	s.player = player
+	s.modMultiplier = player.diff.GetScoreMultiplierV2()
+	for _, object := range beatMap.HitObjects {
+		if slider, ok := object.(*objects.Slider); ok {
+			s.AddResult(JudgementResult{HitResult: SliderStart, MaxResult: SliderStart, ComboResult: Increase})
+			for i, point := range slider.ScorePoints {
+				result := SliderPoint
+				if i == len(slider.ScorePoints)-1 {
+					result = LegacySliderEnd
+				} else if point.IsReverse {
+					result = SliderRepeat
+				}
+				s.AddResult(JudgementResult{HitResult: result, MaxResult: result, ComboResult: Increase})
+			}
+			s.AddResult(JudgementResult{HitResult: Hit300, MaxResult: Hit300, ComboResult: Hold})
+		} else {
+			s.AddResult(JudgementResult{HitResult: Hit300, MaxResult: Hit300, ComboResult: Increase})
+		}
+	}
+	s.comboPartMax, s.maxHits = s.comboPart, s.hits
+	s.score, s.combo, s.bonus, s.accPart, s.accPartMax, s.hits, s.basicHitCount = 0, 0, 0, 0, 0, 0, 0
+	s.comboPart, s.accuracy = 0, 1
+}
+
+func stableStandardizedResult(result JudgementResult) JudgementResult {
+	if result.MaxResult&SliderEnd != 0 {
+		result.MaxResult = LegacySliderEnd
+		if result.HitResult&SliderEnd != 0 {
+			result.HitResult = LegacySliderEnd
+		}
+	}
+	return result
+}

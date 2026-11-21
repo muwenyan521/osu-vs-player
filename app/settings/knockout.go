@@ -4,28 +4,29 @@ var Knockout = initKnockout()
 
 func initKnockout() *knockout {
 	return &knockout{
-		Mode:                MaxCombo,
-		SmokeEnabled:        false,
-		GraceEndTime:        -10,
-		BubbleMinimumCombo:  200,
-		ExcludeMods:         "",
-		MaxPlayers:          50,
-		MinPlayers:          1,
-		RevivePlayersAtEnd:  false,
-		LiveSort:            true,
-		SortBy:              "Score",
-		HideOverlayOnBreaks: false,
-		MinCursorSize:       3.0,
-		MaxCursorSize:       7.0,
-		AddDanser:           false,
-		DanserName:          "danser",
-		ShowRealtimeUR:      true,
-		ShowPPAndURRank:     false,
-		Rank1Highlight:      false,
-		PlayerColors:        "",
-		ReplayDebug:         false,
-		EnableErrorFix:      false,
-		ErrorFixFile:        "error.err",
+		Mode:                 MaxCombo,
+		SmokeEnabled:         false,
+		GraceEndTime:         -10,
+		BubbleMinimumCombo:   200,
+		ExcludeMods:          "",
+		MaxPlayers:           50,
+		MinPlayers:           1,
+		RevivePlayersAtEnd:   false,
+		LiveSort:             true,
+		SortBy:               "Score",
+		HideOverlayOnBreaks:  false,
+		MinCursorSize:        3.0,
+		MaxCursorSize:        7.0,
+		AddDanser:            false,
+		DanserName:           "danser",
+		ShowRealtimeUR:       false,
+		ShowPPAndURRank:      false,
+		Rank1Highlight:       false,
+		PlayerColors:         "",
+		DistinctPlayerColors: true,
+		ReplayDebug:          false,
+		EnableErrorFix:       false,
+		ErrorFixFile:         "error.err",
 	}
 }
 
@@ -75,6 +76,9 @@ type knockout struct {
 	AddDanser  bool   `liveedit:"false"`
 	DanserName string `label:"Danser's name" tooltip:"It's also used in danser replay mode" liveedit:"false"`
 
+	// Display score and combo columns during gameplay.
+	ShowScoreAndCombo bool
+
 	// Display each replay's unstable rate in VS mode.
 	ShowRealtimeUR bool `label:"Show per-player unstable rate"`
 
@@ -84,8 +88,17 @@ type knockout struct {
 	// Highlight first-place ranks in the VS overlay.
 	Rank1Highlight bool `label:"Highlight first place" showif:"Mode=3"`
 
+	SplitEasyHalfTime bool `label:"Separate HT/EZ awards and prefer other plays"`
+
+	Watermark string `label:"Video watermark"`
+
+	DistinctPlayerColors bool `label:"Use distinct fixed player colors"`
+
 	// Optional per-player cursor colors as Name:R,G,B entries separated by |.
 	PlayerColors string `label:"Player cursor colors" tooltip:"Format: PlayerName:255,0,0|OtherName:0,128,255" showif:"Mode=3"`
+
+	// CSV containing authoritative lazer total_score values for every replay.
+	ReplayTotalScoresFile string `label:"Replay lazer total scores CSV" path:"Select score CSV" liveedit:"false"`
 
 	// Compare simulated judgements with the totals stored in each replay.
 	ReplayDebug bool `label:"Compare replay results with stored score" showif:"Mode=3"`

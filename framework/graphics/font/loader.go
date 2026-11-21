@@ -19,6 +19,23 @@ import (
 )
 
 func LoadFont(reader io.Reader) *Font {
+	return loadFont(reader, nil)
+}
+
+// LoadFontSubset loads printable ASCII and the characters needed by a known text set.
+// This avoids allocating an atlas for every CJK and icon glyph in large fonts.
+func LoadFontSubset(reader io.Reader, characters string) *Font {
+	selected := make(map[rune]bool)
+	for char := rune(32); char < 127; char++ {
+		selected[char] = true
+	}
+	for _, char := range characters {
+		selected[char] = true
+	}
+	return loadFont(reader, selected)
+}
+
+func loadFont(reader io.Reader, selected map[rune]bool) *Font {
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		panic("Error reading font: " + err.Error())
@@ -57,6 +74,9 @@ func LoadFont(reader io.Reader) *Font {
 	buff := &sfnt.Buffer{}
 
 	for i := rune(0); i <= unicode.MaxRune; i++ {
+		if selected != nil && !selected[i] {
+			continue
+		}
 		if idx, _ := ttf.GlyphIndex(buff, i); idx > 0 {
 			b, gAdv, _ := fc.GlyphBounds(i)
 			w, h := (b.Max.X - b.Min.X).Ceil(), (b.Max.Y - b.Min.Y).Ceil()

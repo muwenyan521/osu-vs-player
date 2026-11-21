@@ -452,8 +452,8 @@ func NewPlayer(beatMap *beatmap.BeatMap) *Player {
 	} else {
 		player.volumeGlider.AddEvent(beatmapEnd, beatmapEnd+fadeOut, 0.0)
 	}
-	if _, ok := player.overlay.(*overlays.KnockoutOverlay); ok {
-		player.MapEnd += (settings.Gameplay.ResultsScreenTime + 1) * 1000
+	if knockout, ok := player.overlay.(*overlays.KnockoutOverlay); ok {
+		player.MapEnd += (max(settings.Gameplay.ResultsScreenTime, knockout.RequiredResultsDuration()) + 1) * 1000
 	}
 
 	player.MapEnd += 100
@@ -951,6 +951,9 @@ func (player *Player) DrawMain(float64) {
 
 				col1 := cursorColors[baseIndex]
 				col2 := cursorColors[ind]
+				if settings.KNOCKOUT && settings.Knockout.DistinctPlayerColors {
+					col2 = col1
+				}
 
 				g.DrawM(scale2, player.batch, col1, col2)
 			}

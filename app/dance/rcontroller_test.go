@@ -8,6 +8,7 @@ import (
 
 	"github.com/wieku/rplpa"
 
+	"github.com/wieku/danser-go/app/beatmap/difficulty"
 	"github.com/wieku/danser-go/app/rulesets/osu"
 )
 
@@ -82,5 +83,34 @@ func TestReplayStatsMatch(t *testing.T) {
 	score.CountMiss++
 	if replayStatsMatch(replay, score) {
 		t.Fatal("different replay totals were reported as a match")
+	}
+}
+
+func TestReplayDisplayFlips(t *testing.T) {
+	plain := difficulty.NewDifficulty(5, 5, 5, 5)
+	for _, tc := range []struct {
+		name string
+		mods []rplpa.ModInfo
+		h, v bool
+	}{
+		{"none", nil, false, false},
+		{"mirror-default", []rplpa.ModInfo{{Acronym: "MR"}}, true, false},
+		{"mirror-vertical", []rplpa.ModInfo{{Acronym: "MR", Settings: map[string]any{"reflection": 1}}}, false, true},
+		{"mirror-both", []rplpa.ModInfo{{Acronym: "MR", Settings: map[string]any{"reflection": 2}}}, true, true},
+		{"hardrock", []rplpa.ModInfo{{Acronym: "HR"}}, false, true},
+		{"hardrock-and-both", []rplpa.ModInfo{{Acronym: "HR"}, {Acronym: "MR", Settings: map[string]any{"reflection": 2}}}, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			diff := plain.Clone()
+			diff.SetMods2(tc.mods)
+			h, v := replayDisplayFlips(diff, plain)
+			if h != tc.h || v != tc.v {
+				t.Fatalf("got (%t,%t), want (%t,%t)", h, v, tc.h, tc.v)
+			}
+			h, v = replayDisplayFlips(diff, diff)
+			if h || v {
+				t.Fatal("identical replay and display mods must not reflect the cursor")
+			}
+		})
 	}
 }

@@ -100,9 +100,10 @@ type subSet struct {
 	comboOffsetCurrent int64
 	comboOffsetMax     int64
 
-	score          *Score
-	hp             IHealthProcessor
-	scoreProcessor scoreProcessor
+	score                 *Score
+	hp                    IHealthProcessor
+	scoreProcessor        scoreProcessor
+	standardizedProcessor *scoreV3Processor
 
 	currentKatu int
 	currentBad  int
@@ -269,16 +270,26 @@ func NewOsuRuleset(beatMap *beatmap.BeatMap, cursors []*graphics.Cursor, diffs [
 		}
 
 		sc.Init(beatMap, player)
+		var standardized *scoreV3Processor
+		if settings.Knockout.ReplayTotalScoresFile != "" {
+			standardized = newScoreV3Processor(false)
+			if diff.CheckModActive(difficulty.Lazer) {
+				standardized.Init(beatMap, player)
+			} else {
+				standardized.initStable(beatMap, player)
+			}
+		}
 
 		ruleset.cursors[cursor] = &subSet{
 			player: player,
 			score: &Score{
 				Accuracy: 1,
 			},
-			ppv2:           performance.CreatePPCalculator(),
-			hp:             hp,
-			recoveries:     recoveries,
-			scoreProcessor: sc,
+			ppv2:                  performance.CreatePPCalculator(),
+			hp:                    hp,
+			recoveries:            recoveries,
+			scoreProcessor:        sc,
+			standardizedProcessor: standardized,
 		}
 	}
 
@@ -587,6 +598,14 @@ func (set *OsuRuleSet) SendResult(cursor *graphics.Cursor, judgementResult Judge
 		subSet.potentialCombo++
 	}
 
+	if subSet.standardizedProcessor != nil {
+		standardResult := judgementResult
+		if !subSet.player.diff.CheckModActive(difficulty.Lazer) {
+			standardResult = stableStandardizedResult(standardResult)
+		}
+		subSet.standardizedProcessor.AddResult(standardResult)
+		subSet.score.StandardizedScore = subSet.standardizedProcessor.score
+	}
 	subSet.scoreProcessor.AddResult(judgementResult)
 	subSet.score.AddResult(judgementResult)
 

@@ -163,7 +163,7 @@ func loadFonts() {
 	font.AddAlias(font.GetFont("Quicksand Bold"), "HUDFont")
 
 	if strings.TrimSpace(settings.Gameplay.HUDFont) != "" {
-		loadSubFont(settings.Gameplay.HUDFont, "HUDFont")
+		loadSubFont(settings.Gameplay.HUDFont, "HUDFont", "由玩家制作的改版渲染")
 	}
 
 	if strings.TrimSpace(settings.Gameplay.SBFont) != "" {
@@ -171,7 +171,7 @@ func loadFonts() {
 	}
 }
 
-func loadSubFont(uPath, alias string) {
+func loadSubFont(uPath, alias string, characters ...string) {
 	if !filepath.IsAbs(uPath) {
 		uPath = filepath.Join(env.DataDir(), uPath)
 	}
@@ -179,7 +179,12 @@ func loadSubFont(uPath, alias string) {
 	file, err := os.Open(uPath)
 
 	if err == nil {
-		fnt := font.LoadFont(file)
+		var fnt *font.Font
+		if len(characters) > 0 {
+			fnt = font.LoadFontSubset(file, characters[0])
+		} else {
+			fnt = font.LoadFont(file)
+		}
 		file.Close()
 
 		font.AddAlias(fnt, alias)

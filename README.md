@@ -15,6 +15,19 @@ As danser is in development phase, some things may break. If that happens please
 
 **WARNING**: Because of MacOS' poor OpenGL support, danser-go won't run on that platform. Please use dual-booted Windows/Linux instead.
 
+## VS-player branch
+
+This branch tracks [Wieku/danser-go](https://github.com/Wieku/danser-go) and adds custom multi-replay knockout rendering:
+
+- Replay deduplication using authoritative lazer `total_score` values supplied as CSV.
+- Miss-based elimination timelines, final-score leader protection, and optional separate HT/EZ awards.
+- Animated player rows, fixed player colors, a beatmap intro card, a watermark, and paginated Chinese award standings.
+- Replay-stat comparison, display-only Mirror corrections, and subset font loading.
+
+The Chinese [rendering rules and operating guide](渲染规则与操作流程.md) describes the current rules, input files, recording presets, and local rendering procedure. The local presets, fonts, skins, replay inputs, and rendered videos are not bundled in this repository.
+
+Replay simulation still differs from stored results for some plays. Final awards use stored replay statistics and supplied standardized scores; the guide lists the remaining limitations.
+
 ## Examples
 * [Omoi - Chiisana Koi no Uta (Synth Rock Cover) [Kroytz's EX EX] - TAG2 Mirror Collage](https://youtu.be/Vo0Pbpu113Y)
 * [Sex Whales & Fraxo - Dead To Me (feat. Lox Chatterbox) [extrad1881 (ar 10)] Mirror Collage](https://youtu.be/KCHqrVGdXrk)

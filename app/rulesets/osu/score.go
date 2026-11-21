@@ -16,23 +16,24 @@ type scoreProcessor interface {
 }
 
 type Score struct {
-	Score        int64
-	Accuracy     float64
-	Grade        Grade
-	CurrentCombo uint
-	Combo        uint
-	PerfectCombo bool
-	Count300     uint
-	CountGeki    uint
-	Count100     uint
-	CountKatu    uint
-	Count50      uint
-	CountMiss    uint
-	CountSB      uint
-	MaxTicks     uint
-	SliderEnd    uint
-	MaxSliderEnd uint
-	PP           api.PPv2Results
+	Score             int64
+	StandardizedScore int64
+	Accuracy          float64
+	Grade             Grade
+	CurrentCombo      uint
+	Combo             uint
+	PerfectCombo      bool
+	Count300          uint
+	CountGeki         uint
+	Count100          uint
+	CountKatu         uint
+	Count50           uint
+	CountMiss         uint
+	CountSB           uint
+	MaxTicks          uint
+	SliderEnd         uint
+	MaxSliderEnd      uint
+	PP                api.PPv2Results
 
 	scoredObjects uint
 }
